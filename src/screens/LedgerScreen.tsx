@@ -1,3 +1,4 @@
+import { SafeAreaView } from "react-native-safe-area-context";
 import React, { useState } from "react";
 import {
   Alert,
@@ -7,16 +8,16 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { CAT_COLORS, COLORS } from "../constants/theme";
 import { useTransacciones } from "../hooks/useTransacciones";
 
 export default function LedgerScreen() {
   const { transacciones, remove } = useTransacciones();
-  const [filter, setFilter] = useState<"all" | "gasto" | "ingreso" | "categoria">(
-    "all",
-  );
+  const [filter, setFilter] = useState<"all" | "gasto" | "ingreso" | "categoria">("all");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
   const categoriasActivas = new Set(transacciones.map((t) => t.categoria)).size;
   const categories = Array.from(new Set(transacciones.map((t) => t.categoria))).sort();
 
@@ -146,50 +147,72 @@ export default function LedgerScreen() {
                   {formatSignedAmount(getDateNetTotal(groupedByDate.get(date) ?? []))}
                 </Text>
               </View>
-              {(groupedByDate.get(date) ?? []).map((t) => (
-                <TouchableOpacity
-                  key={t.id}
-                  style={styles.txnItem}
-                  onLongPress={() => handleDelete(t.id)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.txnLeft}>
-                    <View
-                      style={[
-                        styles.txnIconWrap,
-                        {
-                          backgroundColor:
-                            CAT_COLORS[
-                              t.categoria as keyof typeof CAT_COLORS
-                            ] || COLORS.accent,
-                        },
-                      ]}
-                    >
-                      <Text style={styles.txnIconText}>
-                        {getTxnIcon(t.descripcion, t.categoria, t.tipo)}
-                      </Text>
+              {(groupedByDate.get(date) ?? []).map((t) => {
+                const isExpanded = expandedId === t.id;
+
+                return (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={styles.txnItem}
+                    // NUEVO: Al tocar, expande o colapsa los detalles
+                    onPress={() => setExpandedId(isExpanded ? null : t.id)}
+                    onLongPress={() => handleDelete(t.id)}
+                    activeOpacity={0.7}
+                  >
+                    {/* Fila principal siempre visible */}
+                    <View style={styles.txnTopRow}>
+                      <View style={styles.txnLeft}>
+                        <View
+                          style={[
+                            styles.txnIconWrap,
+                            {
+                              backgroundColor:
+                                CAT_COLORS[
+                                  t.categoria as keyof typeof CAT_COLORS
+                                ] || COLORS.accent,
+                            },
+                          ]}
+                        >
+                          {getTxnIcon(t.categoria, t.tipo, 18, '#fff')}
+                        </View>
+                        <View style={styles.txnInfo}>
+                          {/* NUEVO: Muestra la Categoría como título principal */}
+                          <Text style={styles.txnDesc}>{t.categoria}</Text>
+                          {/* NUEVO: Muestra Fuente y Descripción como subtítulo */}
+                          <Text style={styles.txnMeta} numberOfLines={1}>
+                            {t.fuente} • {t.descripcion}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.txnRight}>
+                        <Text
+                          style={[
+                            styles.txnAmount,
+                            t.tipo === "gasto" ? styles.txnGasto : styles.txnIngreso,
+                          ]}
+                        >
+                          {t.tipo === "gasto" ? "−" : "+"} $
+                          {t.monto.toLocaleString("es-AR")}
+                        </Text>
+                        <Text style={styles.txnHour}>{formatTxnHour(t)}</Text>
+                      </View>
                     </View>
-                    <View style={styles.txnInfo}>
-                      <Text style={styles.txnDesc}>{t.descripcion}</Text>
-                      <Text style={styles.txnMeta}>
-                        {t.fuente} • {t.categoria}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.txnRight}>
-                    <Text
-                      style={[
-                        styles.txnAmount,
-                        t.tipo === "gasto" ? styles.txnGasto : styles.txnIngreso,
-                      ]}
-                    >
-                      {t.tipo === "gasto" ? "−" : "+"} $
-                      {t.monto.toLocaleString("es-AR")}
-                    </Text>
-                    <Text style={styles.txnHour}>{formatTxnHour(t)}</Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
+
+                    {/* NUEVO: Detalles expansibles usando el raw_input */}
+                    {isExpanded && (
+                      <View style={styles.txnExpanded}>
+                        <Text style={styles.expandedLabel}>Registro original de IA:</Text>
+                        <Text style={styles.expandedText}>
+                          "{t.raw_input || 'No hay texto original disponible'}"
+                        </Text>
+                        <Text style={styles.expandedSubText}>
+                          Guardado como: {t.descripcion}
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           ))
         )}
@@ -223,15 +246,31 @@ function formatSignedAmount(amount: number) {
   return `${sign}$${Math.abs(amount).toLocaleString("es-AR")}`;
 }
 
-function getTxnIcon(descripcion: string, categoria: string, tipo: "gasto" | "ingreso") {
-  const text = `${descripcion} ${categoria}`.toLowerCase();
-  if (tipo === "ingreso") return "💰";
-  if (text.includes("farm") || text.includes("salud") || text.includes("remed")) return "✚";
-  if (text.includes("pizza") || text.includes("hambur") || text.includes("lomito")) return "🍔";
-  if (text.includes("uber") || text.includes("taxi") || text.includes("nafta")) return "🚕";
-  if (text.includes("spotify") || text.includes("netflix") || text.includes("cine")) return "🎵";
-  if (text.includes("alquiler") || text.includes("vivienda")) return "🏠";
-  return "🧾";
+// Íconos vectoriales monocromáticos (MaterialCommunityIcons)
+function getTxnIcon(categoria: string, tipo: "gasto" | "ingreso", size = 18, color = "#fff") {
+  if (tipo === "ingreso" || categoria === "Ingresos") {
+    return <MaterialCommunityIcons name="cash-plus" size={size} color={color} />;
+  }
+
+  switch (categoria) {
+    case "Alimentación":
+      return <MaterialCommunityIcons name="silverware-fork-knife" size={size} color={color} />;
+    case "Transporte":
+      return <MaterialCommunityIcons name="car" size={size} color={color} />;
+    case "Salud":
+      return <MaterialCommunityIcons name="medical-bag" size={size} color={color} />;
+    case "Vivienda":
+      return <MaterialCommunityIcons name="home-variant" size={size} color={color} />;
+    case "Entretenimiento":
+      return <MaterialCommunityIcons name="gamepad-variant" size={size} color={color} />;
+    case "Salidas":
+      return <MaterialCommunityIcons name="glass-cocktail" size={size} color={color} />;
+    case "Servicios":
+      return <MaterialCommunityIcons name="flash" size={size} color={color} />;
+    case "Varios":
+    default:
+      return <MaterialCommunityIcons name="receipt" size={size} color={color} />;
+  }
 }
 
 const styles = StyleSheet.create({
@@ -310,9 +349,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   txnItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
     backgroundColor: COLORS.card,
     paddingHorizontal: 12,
     paddingVertical: 12,
@@ -320,6 +356,11 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     borderWidth: 1,
     borderColor: COLORS.border,
+  },
+  txnTopRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   txnLeft: { flexDirection: "row", alignItems: "center", flex: 1 },
   txnIconWrap: {
@@ -335,7 +376,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
-  txnInfo: { flex: 1 },
+  txnInfo: { flex: 1, paddingRight: 10 },
   txnDesc: { fontSize: 14, fontWeight: "600", color: COLORS.text1 },
   txnMeta: { fontSize: 11, color: COLORS.text2, marginTop: 2 },
   txnRight: {
@@ -350,4 +391,31 @@ const styles = StyleSheet.create({
   },
   txnGasto: { color: "#ff4757" },
   txnIngreso: { color: "#2ed573" },
+  
+  // Estilos de la nueva sección expansible
+  txnExpanded: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  expandedLabel: {
+    fontSize: 11,
+    color: COLORS.text3,
+    marginBottom: 4,
+    fontWeight: "600",
+    textTransform: "uppercase"
+  },
+  expandedText: {
+    fontSize: 13,
+    color: COLORS.text2,
+    fontStyle: "italic",
+    lineHeight: 18,
+  },
+  expandedSubText: {
+    fontSize: 11,
+    color: COLORS.accent,
+    marginTop: 6,
+    fontWeight: "500",
+  }
 });

@@ -1,5 +1,5 @@
 import * as Haptics from "expo-haptics";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -30,18 +30,56 @@ const EXAMPLES = [
   "remedios 4200 efectivo",
 ];
 
+// 1. SALUDO DINÁMICO
+const getGreeting = () => {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return "Buenos días,";
+  if (hour >= 12 && hour < 20) return "Buenas tardes,";
+  return "Buenas noches,";
+};
+
 export default function InputScreen() {
   const [text, setText] = useState("");
+  const [originalText, setOriginalText] = useState("");
+  const [isFocused, setIsFocused] = useState(false); // Para el Glow Effect
   const [parsing, setParsing] = useState(false);
   const [parsedTxns, setParsedTxns] = useState<ParsedTransactionWithFecha[]>([]);
   const [saving, setSaving] = useState(false);
+  
   const cardAnim = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(0.5)).current; // Para el esqueleto
+  const btnScale = useRef(new Animated.Value(1)).current; // Para el rebote del botón
   const { insert, transacciones } = useTransacciones();
+
+  // 4. ANIMACIÓN DEL BOTÓN (Rebote al detectar números)
+  const hasNumber = /\d/.test(text);
+  useEffect(() => {
+    if (hasNumber) {
+      Animated.sequence([
+        Animated.spring(btnScale, { toValue: 1.15, useNativeDriver: true, speed: 20 }),
+        Animated.spring(btnScale, { toValue: 1, useNativeDriver: true, speed: 20 })
+      ]).start();
+    }
+  }, [hasNumber]);
+
+  // ANIMACIÓN DEL ESQUELETO (Shimmer Effect)
+  useEffect(() => {
+    if (parsing) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 0.4, duration: 600, useNativeDriver: true })
+        ])
+      ).start();
+    } else {
+      pulseAnim.setValue(0.5);
+    }
+  }, [parsing]);
 
   const showCard = () => {
     Animated.spring(cardAnim, {
       toValue: 1,
-      useNativeDriver: false,
+      useNativeDriver: true, // Optimizado para Native Driver
       tension: 80,
       friction: 8,
     }).start();
@@ -51,13 +89,18 @@ export default function InputScreen() {
     Animated.timing(cardAnim, {
       toValue: 0,
       duration: 200,
-      useNativeDriver: false,
+      useNativeDriver: true,
     }).start(() => setParsedTxns([]));
   };
 
   const handleParse = async () => {
-    if (!text.trim()) return;
+    const currentText = text.trim();
+    if (!currentText || !hasNumber) return;
+    
     Keyboard.dismiss();
+    
+    // UX Optimista: Vaciamos el texto al instante para dar sensación de velocidad
+    setOriginalText(currentText);
     setParsing(true);
     setParsedTxns([]);
     cardAnim.setValue(0);
@@ -65,9 +108,9 @@ export default function InputScreen() {
     try {
       let result: ParsedTransactionWithFecha[];
       try {
-        result = await parseTransactionWithAI(text.trim());
+        result = await parseTransactionWithAI(currentText);
       } catch {
-        const local = parseTransactionLocal(text.trim());
+        const local = parseTransactionLocal(currentText);
         result = [{ ...local, parser: "local" }];
       }
 
@@ -75,9 +118,10 @@ export default function InputScreen() {
       showCard();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e: any) {
+      // Si falla, le devolvemos el texto para que no lo pierda
+      setText(currentText); 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      const errorMsg = e.message || "Error desconocido";
-      Alert.alert("Error", errorMsg);
+      Alert.alert("Error", e.message || "Error desconocido");
     } finally {
       setParsing(false);
     }
@@ -95,7 +139,8 @@ export default function InputScreen() {
           categoria: parsed.categoria,
           tipo: parsed.tipo,
           fuente: parsed.fuente,
-          raw_input: text.trim(),
+          // Guardamos el texto original aunque el input ya esté vacío
+          raw_input: originalText || "Transacción rápida",
         });
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -125,10 +170,10 @@ export default function InputScreen() {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Header */}
+        {/* Header con Saludo Dinámico */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.greeting}>Buenos días,</Text>
+            <Text style={styles.greeting}>{getGreeting()}</Text>
             <Text style={styles.name}>Walter</Text>
           </View>
           <View style={styles.monthBadge}>
@@ -162,36 +207,44 @@ export default function InputScreen() {
                 todaysBalance >= 0 ? styles.positive : styles.negative,
               ]}
             >
-              {todaysBalance >= 0 ? "+" : "-"} $
-              {Math.abs(todaysBalance).toLocaleString("es-AR")}
+              {todaysBalance >= 0 ? "+" : "-"} ${Math.abs(todaysBalance).toLocaleString("es-AR")}
             </Text>
           </View>
         </View>
 
-        {/* Input */}
+        {/* Input con Glow Effect */}
         <View style={styles.inputWrap}>
           <TextInput
-            style={styles.input}
+            style={[
+              styles.input,
+              isFocused && styles.inputFocused // Aplica el borde azul/violeta
+            ]}
             value={text}
             onChangeText={setText}
-            placeholder={'Ej: "gasté 5000 en una pizza con mercado pago"'}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            placeholder={'Ej: gasté 5000 en una pizza'} // 3. Placeholder simple
             placeholderTextColor={COLORS.text3}
             multiline
             numberOfLines={4}
             textAlignVertical="top"
           />
-          <TouchableOpacity
-            style={[styles.sendBtn, parsing && styles.sendBtnDisabled]}
-            onPress={handleParse}
-            disabled={parsing || !text.trim()}
-            activeOpacity={0.8}
-          >
-            {parsing ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
+          <Animated.View style={{
+            position: "absolute",
+            bottom: 10,
+            right: 10,
+            transform: [{ scale: btnScale }],
+            opacity: hasNumber ? 1 : 0.4 // Botón reactivo opacidad
+          }}>
+            <TouchableOpacity
+              style={[styles.sendBtn, !hasNumber && styles.sendBtnDisabled]}
+              onPress={handleParse}
+              disabled={parsing || !hasNumber}
+              activeOpacity={0.8}
+            >
               <Text style={styles.sendIcon}>↑</Text>
-            )}
-          </TouchableOpacity>
+            </TouchableOpacity>
+          </Animated.View>
         </View>
 
         {/* Examples */}
@@ -205,7 +258,10 @@ export default function InputScreen() {
             <TouchableOpacity
               key={ex}
               style={styles.exPill}
-              onPress={() => setText(ex)}
+              onPress={() => {
+                setText(ex);
+                setIsFocused(true);
+              }}
               activeOpacity={0.7}
             >
               <Text style={styles.exText}>{ex}</Text>
@@ -213,8 +269,25 @@ export default function InputScreen() {
           ))}
         </ScrollView>
 
-        {/* Result Card */}
-        {parsedTxns.length > 0 && (
+        {/* EFECTO ESQUELETO DE CARGA */}
+        {parsing && (
+          <Animated.View style={[styles.resultCard, { opacity: pulseAnim }]}>
+            <View style={styles.cardBody}>
+              <Text style={styles.resultTitle}>Analizando con IA...</Text>
+              <View style={styles.txnPreview}>
+                <View style={[styles.txnPreviewBadge, { backgroundColor: COLORS.border }]} />
+                <View style={styles.txnPreviewMain}>
+                  <View style={styles.skeletonLineLong} />
+                  <View style={styles.skeletonLineShort} />
+                </View>
+                <View style={styles.skeletonBox} />
+              </View>
+            </View>
+          </Animated.View>
+        )}
+
+        {/* Result Card Real */}
+        {!parsing && parsedTxns.length > 0 && (
           <Animated.View
             style={[
               styles.resultCard,
@@ -223,7 +296,7 @@ export default function InputScreen() {
                   {
                     translateY: cardAnim.interpolate({
                       inputRange: [0, 1],
-                      outputRange: [100, 0],
+                      outputRange: [50, 0], // Movimiento más suave
                     }),
                   },
                 ],
@@ -235,7 +308,7 @@ export default function InputScreen() {
               <Text style={styles.resultTitle}>
                 {parsedTxns.length > 1
                   ? `${parsedTxns.length} transacciones detectadas`
-                  : "Transacción detectada"}
+                  : "Transacción lista"}
               </Text>
               {parsedTxns.map((parsed, idx) => {
                 const catColor =
@@ -271,7 +344,7 @@ export default function InputScreen() {
                   onPress={hideCard}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.cancelText}>Cancelar</Text>
+                  <Text style={styles.cancelText}>Descartar</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.saveBtn, { backgroundColor: COLORS.accent }]}
@@ -295,16 +368,9 @@ export default function InputScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: COLORS.bg,
-  },
-  scroll: {
-    flex: 1,
-  },
-  content: {
-    paddingBottom: 40,
-  },
+  safe: { flex: 1, backgroundColor: COLORS.bg },
+  scroll: { flex: 1 },
+  content: { paddingBottom: 40 },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -313,17 +379,8 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 30,
   },
-  greeting: {
-    fontSize: 14,
-    color: COLORS.text2,
-    fontWeight: "400",
-  },
-  name: {
-    fontSize: 28,
-    color: COLORS.text1,
-    fontWeight: "700",
-    marginTop: 4,
-  },
+  greeting: { fontSize: 14, color: COLORS.text2, fontWeight: "400" },
+  name: { fontSize: 28, color: COLORS.text1, fontWeight: "700", marginTop: 4 },
   monthBadge: {
     backgroundColor: COLORS.accent + "20",
     paddingHorizontal: 12,
@@ -336,10 +393,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     textTransform: "capitalize",
   },
-  hero: {
-    paddingHorizontal: 20,
-    marginBottom: 18,
-  },
+  hero: { paddingHorizontal: 20, marginBottom: 18 },
   heroTitle: {
     fontSize: 32,
     color: COLORS.text1,
@@ -347,10 +401,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     lineHeight: 40,
   },
-  heroSub: {
-    fontSize: 14,
-    color: COLORS.text2,
-  },
+  heroSub: { fontSize: 14, color: COLORS.text2 },
   quickStats: {
     flexDirection: "row",
     paddingHorizontal: 20,
@@ -366,27 +417,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  quickStatLabel: {
-    fontSize: 11,
-    color: COLORS.text2,
-    marginBottom: 4,
-  },
-  quickStatValue: {
-    fontSize: 16,
-    color: COLORS.text1,
-    fontWeight: "700",
-  },
-  positive: {
-    color: "#2ed573",
-  },
-  negative: {
-    color: "#ff4757",
-  },
-  inputWrap: {
-    marginHorizontal: 20,
-    marginBottom: 20,
-    position: "relative",
-  },
+  quickStatLabel: { fontSize: 11, color: COLORS.text2, marginBottom: 4 },
+  quickStatValue: { fontSize: 16, color: COLORS.text1, fontWeight: "700" },
+  positive: { color: "#2ed573" },
+  negative: { color: "#ff4757" },
+  inputWrap: { marginHorizontal: 20, marginBottom: 20, position: "relative" },
   input: {
     backgroundColor: COLORS.card,
     borderRadius: 16,
@@ -397,31 +432,28 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: COLORS.text1,
     minHeight: 100,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: COLORS.border,
   },
+  inputFocused: {
+    borderColor: COLORS.accent, // Efecto Glow/Foco
+    shadowColor: COLORS.accent,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 3,
+  },
   sendBtn: {
-    position: "absolute",
-    bottom: 10,
-    right: 10,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: COLORS.accent,
     justifyContent: "center",
     alignItems: "center",
   },
-  sendBtnDisabled: {
-    opacity: 0.5,
-  },
-  sendIcon: {
-    fontSize: 18,
-    color: "#fff",
-    fontWeight: "700",
-  },
-  examplesRow: {
-    marginBottom: 20,
-  },
+  sendBtnDisabled: { backgroundColor: COLORS.border },
+  sendIcon: { fontSize: 20, color: "#fff", fontWeight: "700", marginTop: -2 },
+  examplesRow: { marginBottom: 20 },
   exPill: {
     backgroundColor: COLORS.card,
     paddingHorizontal: 12,
@@ -430,10 +462,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  exText: {
-    fontSize: 12,
-    color: COLORS.text2,
-  },
+  exText: { fontSize: 12, color: COLORS.text2 },
   resultCard: {
     marginHorizontal: 20,
     borderRadius: 16,
@@ -442,39 +471,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  cardCategory: {
-    fontSize: 14,
-    color: "#fff",
-    fontWeight: "600",
-  },
-  cardSource: {
-    fontSize: 12,
-    color: "#fff",
-    opacity: 0.8,
-    marginTop: 2,
-  },
-  cardAmount: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#fff",
-  },
-  amountGasto: {
-    color: "#ff4757",
-  },
-  amountIngreso: {
-    color: "#2ed573",
-  },
-  cardBody: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
+  cardBody: { paddingHorizontal: 16, paddingVertical: 14 },
   resultTitle: {
     fontSize: 14,
     color: COLORS.text2,
@@ -492,57 +489,50 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginBottom: 8,
   },
-  txnPreviewBadge: {
-    width: 8,
-    height: 32,
-    borderRadius: 4,
-    marginRight: 10,
-  },
-  txnPreviewMain: {
-    flex: 1,
-    marginRight: 10,
-  },
-  cardDesc: {
-    fontSize: 14,
-    color: COLORS.text1,
-    fontWeight: "500",
-  },
-  previewMeta: {
-    fontSize: 12,
-    color: COLORS.text2,
-    marginTop: 3,
-  },
-  previewAmount: {
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  cardActions: {
-    flexDirection: "row",
-    gap: 10,
-  },
+  txnPreviewBadge: { width: 8, height: 32, borderRadius: 4, marginRight: 10 },
+  txnPreviewMain: { flex: 1, marginRight: 10 },
+  cardDesc: { fontSize: 14, color: COLORS.text1, fontWeight: "500" },
+  previewMeta: { fontSize: 12, color: COLORS.text2, marginTop: 3 },
+  previewAmount: { fontSize: 16, fontWeight: "700" },
+  amountGasto: { color: "#ff4757" },
+  amountIngreso: { color: "#2ed573" },
+  cardActions: { flexDirection: "row", gap: 10, marginTop: 4 },
   cancelBtn: {
     flex: 1,
     borderRadius: 10,
-    paddingVertical: 10,
+    paddingVertical: 12,
     backgroundColor: COLORS.border,
     justifyContent: "center",
     alignItems: "center",
   },
-  cancelText: {
-    fontSize: 14,
-    color: COLORS.text1,
-    fontWeight: "600",
-  },
+  cancelText: { fontSize: 14, color: COLORS.text1, fontWeight: "600" },
   saveBtn: {
     flex: 1,
     borderRadius: 10,
-    paddingVertical: 10,
+    paddingVertical: 12,
     justifyContent: "center",
     alignItems: "center",
   },
-  saveText: {
-    fontSize: 14,
-    color: "#fff",
-    fontWeight: "600",
+  saveText: { fontSize: 14, color: "#fff", fontWeight: "600" },
+  
+  // Estilos del Esqueleto de Carga
+  skeletonLineLong: {
+    height: 14,
+    backgroundColor: COLORS.border,
+    borderRadius: 4,
+    width: "70%",
+    marginBottom: 6,
   },
+  skeletonLineShort: {
+    height: 10,
+    backgroundColor: COLORS.border,
+    borderRadius: 4,
+    width: "40%",
+  },
+  skeletonBox: {
+    height: 16,
+    backgroundColor: COLORS.border,
+    borderRadius: 4,
+    width: 50,
+  }
 });
