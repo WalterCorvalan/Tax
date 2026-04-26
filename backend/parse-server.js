@@ -14,8 +14,10 @@ const transactionSchema = z.object({
   monto: z.number().positive(),
   descripcion: z.string().min(2).max(80),
   categoria: z.string().min(2).max(30),
-  tipo: z.enum(["gasto", "ingreso"]),
-  fuente: z.string().min(2).max(40),
+  // NUEVO: Agregamos "transferencia" al enum
+  tipo: z.enum(["gasto", "ingreso", "transferencia"]),
+  // NUEVO: Ampliamos el max a 60 para que entren cosas como "Mercado Pago -> Naranja X"
+  fuente: z.string().min(2).max(60), 
 });
 const responseSchema = z.object({
   transactions: z.array(transactionSchema).min(1),
@@ -57,7 +59,8 @@ app.post("/parse", async (req, res) => {
     return res.json({
       transactions: validated.transactions.map((txn) => ({
         ...txn,
-        descripcion: sanitizeDescription(txn.descripcion, txn.fuente),
+        // No sanitizamos la descripción si es una transferencia, para no borrar los nombres de los bancos
+        descripcion: txn.tipo === "transferencia" ? txn.descripcion : sanitizeDescription(txn.descripcion, txn.fuente),
         fecha,
         parser: "gemini",
       })),
@@ -78,14 +81,8 @@ app.listen(port, () => {
 
 function sanitizeDescription(descripcion, fuente) {
   const sourceWords = [
-    "mercado pago",
-    "mp",
-    "naranja x",
-    "naranja",
-    "banco nacion",
-    "nacion",
-    "brubank",
-    "efectivo",
+    "mercado pago", "mp", "naranja x", "naranja", 
+    "banco nacion", "nacion", "brubank", "efectivo",
     String(fuente || "").toLowerCase(),
   ];
   let cleaned = String(descripcion || "").trim();
@@ -105,9 +102,11 @@ async function parseSingleClauseWithGemini(ai, clauseText) {
     "Convertí texto libre en UNICAMENTE un JSON valido sin markdown.",
     "Si no se especifica medio de pago o cuenta, usar fuente='Efectivo'.",
     "Detectar correctamente estas fuentes si aparecen: Mercado Pago, Naranja X, Banco Nacion, Brubank, Efectivo.",
-    "Categorias esperadas: Alimentación, Transporte, Salud, Vivienda, Entretenimiento, Salidas, Servicios, Ingresos, Varios.",
-    "Descripcion corta y clara (2-4 palabras), sin incluir la cuenta/tarjeta/fuente.",
+    "Categorias esperadas: Alimentación, Transporte, Salud, Vivienda, Entretenimiento, Salidas, Servicios, Ingresos, Transferencias, Varios.",
+    "Descripcion corta y clara (2-4 palabras), sin incluir la cuenta/tarjeta/fuente a menos que sea una transferencia.",
     "Importante: 'me pagaron', 'me devolvieron', 'recibi' => ingreso.",
+    // NUEVA REGLA PARA LA IA
+    "REGLA CRÍTICA: Si el texto indica mover plata entre cuentas propias (ej: 'pase de mp a brubank', 'transferi 5000 a naranja'), clasificar EXCLUSIVAMENTE como tipo='transferencia' y categoria='Transferencias'. En el campo 'fuente' escribí el origen y el destino (ej: 'Mercado Pago -> Brubank').",
     `Texto: "${clauseText}"`,
     "Respuesta JSON obligatoria con claves: monto, descripcion, categoria, tipo, fuente.",
   ].join("\n");
@@ -134,16 +133,20 @@ function splitIntoTransactionClauses(rawText) {
 
 function applyBusinessGuards(txn, clauseText) {
   const text = normalize(clauseText);
-  const ingresoHints = [
-    "me pagaron",
-    "me devolvieron",
-    "devolucion",
-    "devolvieron",
-    "recibi",
-    "cobre",
-    "cobro",
-    "reintegro",
+  
+  // NUEVO: Prioridad máxima a transferencias
+  // NUEVO: Diccionario más amplio y a prueba de errores de tipeo
+  const transferenciaHints = [
+    "pase", "transferi", "movi",
+    "transferencia", "transferecia", "transfer"
   ];
+  const isTransferencia = transferenciaHints.some((hint) => text.includes(hint)) || txn.tipo === "transferencia";
+
+  if (isTransferencia) {
+    return { ...txn, tipo: "transferencia", categoria: "Transferencias" };
+  }
+
+  const ingresoHints = [ "me pagaron", "me devolvieron", "devolucion", "devolvieron", "recibi", "cobre", "cobro", "reintegro" ];
   const gastoHints = ["compre", "gaste", "pague", "abone"];
 
   const hasIngresoHint = ingresoHints.some((hint) => text.includes(hint));

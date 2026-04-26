@@ -1,0 +1,14 @@
+{
+  "build": {
+    "preview": {
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://sfgryfwumcpozlnrepbf.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_KEY": "sb_publishable_67tRMB0E_bL1sK-jOhFVAg_r-Z1SZOK",
+        "EXPO_PUBLIC_PARSE_API_URL": "https://tax-v5xv.onrender.com"
+      }
+    }
+  }
+}

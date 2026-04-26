@@ -7,7 +7,7 @@ export type Transaccion = {
   monto: number;
   descripcion: string;
   categoria: string;
-  tipo: 'gasto' | 'ingreso';
+  tipo: 'gasto' | 'ingreso' | 'transferencia'; // <-- ACÁ ESTÁ LA MAGIA
   fuente: string;
   raw_input?: string;
   created_at?: string;

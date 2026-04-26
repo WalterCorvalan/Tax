@@ -78,30 +78,30 @@ export type ParsedTransaction = {
   monto: number;
   descripcion: string;
   categoria: string;
-  tipo: 'gasto' | 'ingreso';
+  tipo: 'gasto' | 'ingreso' | 'transferencia'; // <-- ACTUALIZADO
   fuente: string;
 };
 
 export function parseTransactionLocal(rawText: string): ParsedTransaction {
   const text = normalizeText(rawText);
   
-  // Detectar si hay palabras de ingreso
+  // Detectar intención
+  // Detectar intención con más tolerancia
+  const esTransferencia = ['pase', 'transferi', 'movi', 'transferencia', 'transferecia', 'transfer'].some((word) => text.includes(word));
   const esIngreso = INGRESOS_KEYWORDS.some((word) => matchesKeyword(text, normalizeText(word)));
   
   let monto: number;
-  let tipo: 'gasto' | 'ingreso';
+  let tipo: 'gasto' | 'ingreso' | 'transferencia';
   
-  // Si es ingreso, buscar el número más cercano a las palabras de ingreso
-  if (esIngreso) {
+  if (esTransferencia) {
+    tipo = 'transferencia';
+    monto = extraerMontoGasto(text); // Usamos la lógica de gasto para encontrar el número
+  } else if (esIngreso) {
     tipo = 'ingreso';
     monto = extraerMontoIngreso(text);
   } else {
     tipo = 'gasto';
     monto = extraerMontoGasto(text);
-  }
-  
-  if (!monto) {
-    throw new Error('No encontré un monto válido. Ej: "gasté 5000"');
   }
   
   // Detectar categoría
@@ -113,8 +113,10 @@ export function parseTransactionLocal(rawText: string): ParsedTransaction {
     }
   }
   
-  // Si es ingreso, forzar categoría
-  if (esIngreso) {
+  // Forzar categorías fijas
+  if (esTransferencia) {
+    categoria = 'Transferencias';
+  } else if (esIngreso) {
     categoria = 'Ingresos';
   }
   
