@@ -13,12 +13,21 @@ import { useTransacciones } from "../hooks/useTransacciones";
 
 export default function LedgerScreen() {
   const { transacciones, remove } = useTransacciones();
-  const [filter, setFilter] = useState<"all" | "gasto" | "ingreso">("all");
+  const [filter, setFilter] = useState<"all" | "gasto" | "ingreso" | "categoria">(
+    "all",
+  );
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const categoriasActivas = new Set(transacciones.map((t) => t.categoria)).size;
+  const categories = Array.from(new Set(transacciones.map((t) => t.categoria))).sort();
 
-  const filtered =
-    filter === "all"
-      ? transacciones
-      : transacciones.filter((t) => t.tipo === filter);
+  const filtered = transacciones.filter((t) => {
+    if (filter === "all") return true;
+    if (filter === "categoria") {
+      if (!selectedCategory) return true;
+      return t.categoria === selectedCategory;
+    }
+    return t.tipo === filter;
+  });
 
   const handleDelete = (id: string) => {
     Alert.alert("Eliminar", "¿Estás seguro?", [
@@ -51,19 +60,26 @@ export default function LedgerScreen() {
       <ScrollView style={styles.scroll}>
         <View style={styles.header}>
           <Text style={styles.title}>Transacciones</Text>
-          <Text style={styles.subtitle}>Historial de tus ingresos y gastos</Text>
+          <Text style={styles.subtitle}>
+            Historial de tus ingresos y gastos • {categoriasActivas} categorías
+          </Text>
         </View>
 
         {/* Filter Pills */}
         <View style={styles.filterRow}>
-          {(["all", "gasto", "ingreso"] as const).map((f) => (
+          {(["all", "gasto", "ingreso", "categoria"] as const).map((f) => (
             <TouchableOpacity
               key={f}
               style={[
                 styles.filterPill,
                 filter === f && styles.filterPillActive,
               ]}
-              onPress={() => setFilter(f)}
+              onPress={() => {
+                setFilter(f);
+                if (f === "categoria" && !selectedCategory && categories.length > 0) {
+                  setSelectedCategory(categories[0]);
+                }
+              }}
               activeOpacity={0.7}
             >
               <Text
@@ -72,11 +88,43 @@ export default function LedgerScreen() {
                   filter === f && styles.filterTextActive,
                 ]}
               >
-                {f === "all" ? "Todas" : f === "gasto" ? "Gastos" : "Ingresos"}
+                {f === "all"
+                  ? "Todas"
+                  : f === "gasto"
+                    ? "Gastos"
+                    : f === "ingreso"
+                      ? "Ingresos"
+                      : "Categorías"}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
+
+        {filter === "categoria" && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoryRow}
+          >
+            {categories.map((cat) => {
+              const isActive = selectedCategory === cat;
+              return (
+                <TouchableOpacity
+                  key={cat}
+                  style={[styles.categoryPill, isActive && styles.categoryPillActive]}
+                  onPress={() => setSelectedCategory(cat)}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[styles.categoryText, isActive && styles.categoryTextActive]}
+                  >
+                    {cat}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
 
         {/* Transactions by Date */}
         {sortedDates.length === 0 ? (
@@ -118,7 +166,7 @@ export default function LedgerScreen() {
                       ]}
                     >
                       <Text style={styles.txnIconText}>
-                        {t.categoria.charAt(0).toUpperCase()}
+                        {getTxnIcon(t.descripcion, t.categoria, t.tipo)}
                       </Text>
                     </View>
                     <View style={styles.txnInfo}>
@@ -175,6 +223,17 @@ function formatSignedAmount(amount: number) {
   return `${sign}$${Math.abs(amount).toLocaleString("es-AR")}`;
 }
 
+function getTxnIcon(descripcion: string, categoria: string, tipo: "gasto" | "ingreso") {
+  const text = `${descripcion} ${categoria}`.toLowerCase();
+  if (tipo === "ingreso") return "💰";
+  if (text.includes("farm") || text.includes("salud") || text.includes("remed")) return "✚";
+  if (text.includes("pizza") || text.includes("hambur") || text.includes("lomito")) return "🍔";
+  if (text.includes("uber") || text.includes("taxi") || text.includes("nafta")) return "🚕";
+  if (text.includes("spotify") || text.includes("netflix") || text.includes("cine")) return "🎵";
+  if (text.includes("alquiler") || text.includes("vivienda")) return "🏠";
+  return "🧾";
+}
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.bg },
   scroll: { flex: 1 },
@@ -205,6 +264,31 @@ const styles = StyleSheet.create({
   },
   filterText: { fontSize: 13, color: COLORS.text2, fontWeight: "500" },
   filterTextActive: { color: "#fff" },
+  categoryRow: {
+    paddingHorizontal: 20,
+    gap: 8,
+    marginBottom: 14,
+  },
+  categoryPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.card,
+  },
+  categoryPillActive: {
+    borderColor: COLORS.accent,
+    backgroundColor: COLORS.accent + "30",
+  },
+  categoryText: {
+    fontSize: 12,
+    color: COLORS.text2,
+    fontWeight: "600",
+  },
+  categoryTextActive: {
+    color: COLORS.text1,
+  },
   emptyState: { paddingVertical: 60, alignItems: "center" },
   emptyText: { fontSize: 16, color: COLORS.text2 },
   dateGroup: { paddingHorizontal: 20, marginBottom: 16 },
@@ -248,8 +332,8 @@ const styles = StyleSheet.create({
   },
   txnIconText: {
     color: "#fff",
-    fontSize: 14,
-    fontWeight: "700",
+    fontSize: 16,
+    fontWeight: "600",
   },
   txnInfo: { flex: 1 },
   txnDesc: { fontSize: 14, fontWeight: "600", color: COLORS.text1 },

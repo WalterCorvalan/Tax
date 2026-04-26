@@ -1,6 +1,6 @@
 import React from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { PieChart } from "react-native-gifted-charts";
+import { LineChart, PieChart } from "react-native-gifted-charts";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CAT_COLORS, COLORS } from "../constants/theme";
 import { useTransacciones } from "../hooks/useTransacciones";
@@ -24,11 +24,24 @@ export default function DashboardScreen() {
   const topCategorias = Object.entries(porCategoria)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
+  const categoriasActivas = Object.keys(porCategoria).length;
 
   const chartData = topCategorias.map(([cat, monto]) => ({
     value: monto,
     text: cat,
     color: CAT_COLORS[cat as keyof typeof CAT_COLORS] || COLORS.accent,
+  }));
+  const gastosPorFecha: Record<string, number> = {};
+  gastos.forEach((t) => {
+    gastosPorFecha[t.fecha] = (gastosPorFecha[t.fecha] || 0) + t.monto;
+  });
+  const fechasEvolucion = Object.keys(gastosPorFecha).sort().slice(-7);
+  const evolutionData = fechasEvolucion.map((fecha) => ({
+    value: gastosPorFecha[fecha],
+    label: new Date(`${fecha}T00:00:00`).toLocaleDateString("es-AR", {
+      day: "2-digit",
+      month: "2-digit",
+    }),
   }));
 
   return (
@@ -75,26 +88,31 @@ export default function DashboardScreen() {
         {/* Chart */}
         {chartData.length > 0 && (
           <View style={styles.chartSection}>
-            <Text style={styles.chartTitle}>Gastos por Categoría</Text>
+            <View style={styles.chartTitleRow}>
+              <Text style={styles.chartTitle}>Gastos por Categoría</Text>
+              <Text style={styles.chartSubtitle}>
+                {categoriasActivas} categorías
+              </Text>
+            </View>
             <View style={styles.chartCard}>
               <View style={styles.chartContainer}>
-              <PieChart
-                data={chartData}
-                donut
-                radius={84}
-                innerRadius={56}
-                showText={false}
-                strokeWidth={2}
-                strokeColor={COLORS.bg}
-                centerLabelComponent={() => (
-                  <View style={styles.chartCenter}>
-                    <Text style={styles.chartCenterLabel}>Total</Text>
-                    <Text style={styles.chartCenterValue}>
-                      ${totalGastos.toLocaleString("es-AR")}
-                    </Text>
-                  </View>
-                )}
-              />
+                <PieChart
+                  data={chartData}
+                  donut
+                  radius={84}
+                  innerRadius={56}
+                  showText={false}
+                  strokeWidth={2}
+                  strokeColor={COLORS.bg}
+                  centerLabelComponent={() => (
+                    <View style={styles.chartCenter}>
+                      <Text style={styles.chartCenterLabel}>Total</Text>
+                      <Text style={styles.chartCenterValue}>
+                        ${totalGastos.toLocaleString("es-AR")}
+                      </Text>
+                    </View>
+                  )}
+                />
               </View>
               <View style={styles.legendWrap}>
                 {topCategorias.map(([cat, monto]) => (
@@ -116,6 +134,31 @@ export default function DashboardScreen() {
                   </View>
                 ))}
               </View>
+            </View>
+          </View>
+        )}
+
+        {evolutionData.length > 1 && (
+          <View style={styles.chartSection}>
+            <Text style={styles.chartTitle}>Evolución de gastos</Text>
+            <View style={styles.chartCard}>
+              <LineChart
+                data={evolutionData}
+                color={COLORS.accent}
+                thickness={3}
+                hideDataPoints={true}
+                areaChart
+                startFillColor={COLORS.accent}
+                endFillColor={COLORS.accent}
+                startOpacity={0.25}
+                endOpacity={0.05}
+                yAxisColor={COLORS.border}
+                xAxisColor={COLORS.border}
+                xAxisLabelTextStyle={{ color: COLORS.text2, fontSize: 10 }}
+                yAxisTextStyle={{ color: COLORS.text2, fontSize: 10 }}
+                noOfSections={4}
+                width={300}
+              />
             </View>
           </View>
         )}
@@ -164,7 +207,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     color: COLORS.text1,
+  },
+  chartTitleRow: {
     marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  chartSubtitle: {
+    fontSize: 12,
+    color: COLORS.text2,
   },
   chartCard: {
     backgroundColor: COLORS.card,

@@ -5,17 +5,22 @@
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
-    "ios": "expo start --ios"
+    "ios": "expo start --ios",
+    "parse-api": "node backend/parse-server.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
+    "@google/genai": "^1.50.1",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@supabase/supabase-js": "^2.46.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
     "expo": "^55.0.17",
     "expo-haptics": "~55.0.14",
     "expo-linear-gradient": "~55.0.13",
     "expo-router": "~55.0.13",
     "expo-status-bar": "~55.0.5",
+    "express": "^5.2.1",
     "react": "19.2.5",
     "react-native": "0.83.6",
     "react-native-gifted-charts": "^1.4.25",
@@ -23,7 +28,8 @@
     "react-native-screens": "~4.23.0",
     "react-native-svg": "15.15.3",
     "react-native-url-polyfill": "^2.0.0",
-    "react-native-web": "^0.21.2"
+    "react-native-web": "^0.21.2",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",

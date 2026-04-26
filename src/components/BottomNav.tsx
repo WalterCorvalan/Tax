@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { COLORS } from "../constants/theme";
 
 type RouteKey = "input" | "dashboard" | "ledger";
@@ -17,9 +18,10 @@ const ITEMS: Array<{ key: RouteKey; label: string; icon: string; href: "/" | "/d
 
 export default function BottomNav({ active }: Props) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   return (
-    <View style={styles.bottomNav}>
+    <View style={[styles.bottomNav, { paddingBottom: Math.max(insets.bottom, 10) }]}>
       {ITEMS.map((item) => {
         const isActive = active === item.key;
         return (

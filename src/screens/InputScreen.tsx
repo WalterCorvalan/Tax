@@ -15,7 +15,11 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CAT_COLORS, COLORS } from "../constants/theme";
 import { useTransacciones } from "../hooks/useTransacciones";
-import { ParsedTransaction, parseTransactionLocal } from "../lib/parseLocal";
+import { parseTransactionLocal } from "../lib/parseLocal";
+import {
+  ParsedTransactionWithFecha,
+  parseTransactionWithAI,
+} from "../lib/parseWithAI";
 
 const EXAMPLES = [
   "gasté 3500 en pizza con mp",
@@ -29,7 +33,7 @@ const EXAMPLES = [
 export default function InputScreen() {
   const [text, setText] = useState("");
   const [parsing, setParsing] = useState(false);
-  const [parsed, setParsed] = useState<ParsedTransaction | null>(null);
+  const [parsedTxns, setParsedTxns] = useState<ParsedTransactionWithFecha[]>([]);
   const [saving, setSaving] = useState(false);
   const cardAnim = useRef(new Animated.Value(0)).current;
   const { insert, transacciones } = useTransacciones();
@@ -37,7 +41,7 @@ export default function InputScreen() {
   const showCard = () => {
     Animated.spring(cardAnim, {
       toValue: 1,
-      useNativeDriver: true,
+      useNativeDriver: false,
       tension: 80,
       friction: 8,
     }).start();
@@ -47,20 +51,27 @@ export default function InputScreen() {
     Animated.timing(cardAnim, {
       toValue: 0,
       duration: 200,
-      useNativeDriver: true,
-    }).start(() => setParsed(null));
+      useNativeDriver: false,
+    }).start(() => setParsedTxns([]));
   };
 
   const handleParse = async () => {
     if (!text.trim()) return;
     Keyboard.dismiss();
     setParsing(true);
-    setParsed(null);
+    setParsedTxns([]);
     cardAnim.setValue(0);
 
     try {
-      const result = parseTransactionLocal(text.trim());
-      setParsed(result);
+      let result: ParsedTransactionWithFecha[];
+      try {
+        result = await parseTransactionWithAI(text.trim());
+      } catch {
+        const local = parseTransactionLocal(text.trim());
+        result = [{ ...local, parser: "local" }];
+      }
+
+      setParsedTxns(result);
       showCard();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e: any) {
@@ -73,19 +84,20 @@ export default function InputScreen() {
   };
 
   const handleSave = async () => {
-    if (!parsed) return;
+    if (parsedTxns.length === 0) return;
     setSaving(true);
     try {
-      const today = new Date().toISOString().slice(0, 10);
-      await insert({
-        fecha: today,
-        monto: parsed.monto,
-        descripcion: parsed.descripcion,
-        categoria: parsed.categoria,
-        tipo: parsed.tipo,
-        fuente: parsed.fuente,
-        raw_input: text.trim(),
-      });
+      for (const parsed of parsedTxns) {
+        await insert({
+          fecha: parsed.fecha ?? new Date().toISOString().slice(0, 10),
+          monto: parsed.monto,
+          descripcion: parsed.descripcion,
+          categoria: parsed.categoria,
+          tipo: parsed.tipo,
+          fuente: parsed.fuente,
+          raw_input: text.trim(),
+        });
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       hideCard();
       setText("");
@@ -96,10 +108,6 @@ export default function InputScreen() {
     }
   };
 
-  const catColor = parsed
-    ? CAT_COLORS[parsed.categoria as keyof typeof CAT_COLORS] || COLORS.accent
-    : COLORS.accent;
-  const isGasto = parsed?.tipo === "gasto";
   const today = new Date().toISOString().slice(0, 10);
   const todaysTxns = transacciones.filter((t) => t.fecha === today);
   const todaysIngresos = todaysTxns
@@ -206,7 +214,7 @@ export default function InputScreen() {
         </ScrollView>
 
         {/* Result Card */}
-        {parsed && (
+        {parsedTxns.length > 0 && (
           <Animated.View
             style={[
               styles.resultCard,
@@ -223,22 +231,40 @@ export default function InputScreen() {
               },
             ]}
           >
-            <View style={[styles.cardHeader, { backgroundColor: catColor }]}>
-              <View>
-                <Text style={styles.cardCategory}>{parsed.categoria}</Text>
-                <Text style={styles.cardSource}>{parsed.fuente}</Text>
-              </View>
-              <Text
-                style={[
-                  styles.cardAmount,
-                  isGasto ? styles.amountGasto : styles.amountIngreso,
-                ]}
-              >
-                {isGasto ? "−" : "+"} ${parsed.monto.toLocaleString("es-AR")}
-              </Text>
-            </View>
             <View style={styles.cardBody}>
-              <Text style={styles.cardDesc}>{parsed.descripcion}</Text>
+              <Text style={styles.resultTitle}>
+                {parsedTxns.length > 1
+                  ? `${parsedTxns.length} transacciones detectadas`
+                  : "Transacción detectada"}
+              </Text>
+              {parsedTxns.map((parsed, idx) => {
+                const catColor =
+                  CAT_COLORS[parsed.categoria as keyof typeof CAT_COLORS] || COLORS.accent;
+                const isGasto = parsed.tipo === "gasto";
+
+                return (
+                  <View
+                    key={`${parsed.descripcion}-${parsed.monto}-${idx}`}
+                    style={styles.txnPreview}
+                  >
+                    <View style={[styles.txnPreviewBadge, { backgroundColor: catColor }]} />
+                    <View style={styles.txnPreviewMain}>
+                      <Text style={styles.cardDesc}>{parsed.descripcion}</Text>
+                      <Text style={styles.previewMeta}>
+                        {parsed.categoria} • {parsed.fuente}
+                      </Text>
+                    </View>
+                    <Text
+                      style={[
+                        styles.previewAmount,
+                        isGasto ? styles.amountGasto : styles.amountIngreso,
+                      ]}
+                    >
+                      {isGasto ? "−" : "+"} ${parsed.monto.toLocaleString("es-AR")}
+                    </Text>
+                  </View>
+                );
+              })}
               <View style={styles.cardActions}>
                 <TouchableOpacity
                   style={styles.cancelBtn}
@@ -248,7 +274,7 @@ export default function InputScreen() {
                   <Text style={styles.cancelText}>Cancelar</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.saveBtn, { backgroundColor: catColor }]}
+                  style={[styles.saveBtn, { backgroundColor: COLORS.accent }]}
                   onPress={handleSave}
                   disabled={saving}
                   activeOpacity={0.8}
@@ -449,11 +475,46 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
+  resultTitle: {
+    fontSize: 14,
+    color: COLORS.text2,
+    marginBottom: 10,
+    fontWeight: "600",
+  },
+  txnPreview: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    backgroundColor: COLORS.bg,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  txnPreviewBadge: {
+    width: 8,
+    height: 32,
+    borderRadius: 4,
+    marginRight: 10,
+  },
+  txnPreviewMain: {
+    flex: 1,
+    marginRight: 10,
+  },
   cardDesc: {
     fontSize: 14,
     color: COLORS.text1,
-    marginBottom: 14,
     fontWeight: "500",
+  },
+  previewMeta: {
+    fontSize: 12,
+    color: COLORS.text2,
+    marginTop: 3,
+  },
+  previewAmount: {
+    fontSize: 16,
+    fontWeight: "700",
   },
   cardActions: {
     flexDirection: "row",
