@@ -31,19 +31,26 @@ export default function LedgerScreen() {
     ]);
   };
 
-  const groupedByDate: { [key: string]: typeof transacciones } = {};
-  filtered.forEach((t) => {
-    if (!groupedByDate[t.fecha]) groupedByDate[t.fecha] = [];
-    groupedByDate[t.fecha].push(t);
+  const sortedTxns = [...filtered].sort((a, b) => {
+    const aTime = new Date(a.created_at ?? `${a.fecha}T00:00:00`).getTime();
+    const bTime = new Date(b.created_at ?? `${b.fecha}T00:00:00`).getTime();
+    return bTime - aTime;
   });
 
-  const sortedDates = Object.keys(groupedByDate).sort().reverse();
+  const groupedByDate = new Map<string, typeof transacciones>();
+  sortedTxns.forEach((t) => {
+    const dateGroup = groupedByDate.get(t.fecha) ?? [];
+    dateGroup.push(t);
+    groupedByDate.set(t.fecha, dateGroup);
+  });
+
+  const sortedDates = Array.from(groupedByDate.keys()).sort().reverse();
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView style={styles.scroll}>
         <View style={styles.header}>
-          <Text style={styles.title}>Libro Mayor</Text>
+          <Text style={styles.title}>Transacciones</Text>
         </View>
 
         {/* Filter Pills */}
@@ -85,7 +92,7 @@ export default function LedgerScreen() {
                   day: "numeric",
                 })}
               </Text>
-              {groupedByDate[date].map((t) => (
+              {(groupedByDate.get(date) ?? []).map((t) => (
                 <TouchableOpacity
                   key={t.id}
                   style={styles.txnItem}
@@ -107,7 +114,7 @@ export default function LedgerScreen() {
                     <View style={styles.txnInfo}>
                       <Text style={styles.txnDesc}>{t.descripcion}</Text>
                       <Text style={styles.txnMeta}>
-                        {t.categoria} • {t.fuente}
+                        {t.categoria} • {t.fuente} • {formatTxnHour(t)}
                       </Text>
                     </View>
                   </View>
@@ -128,6 +135,17 @@ export default function LedgerScreen() {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function formatTxnHour(txn: { created_at?: string }) {
+  if (!txn.created_at) return "s/hora";
+  const date = new Date(txn.created_at);
+  if (Number.isNaN(date.getTime())) return "s/hora";
+  return date.toLocaleTimeString("es-AR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }
 
 const styles = StyleSheet.create({

@@ -37,7 +37,8 @@ export function useTransacciones() {
       const { data, error } = await supabase
         .from('transacciones')
         .select('*')
-        .order('fecha', { ascending: false });
+        .order('fecha', { ascending: true })
+        .order('created_at', { ascending: true });
 
       if (error) throw error;
       setTransacciones(data || []);
@@ -81,8 +82,8 @@ export function useTransacciones() {
       }
 
       if (error) throw error;
-      if (data) {
-        setTransacciones((prev) => [data[0], ...prev]);
+      if (data && data[0]) {
+        setTransacciones((prev) => [...prev, data[0]]);
       }
     } catch (e) {
       console.error('Error inserting transaccion:', e);

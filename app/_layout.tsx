@@ -7,6 +7,7 @@ export default function RootLayout() {
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: COLORS.bg },
+        animation: "none",
       }}
     >
       <Stack.Screen name="index" />
