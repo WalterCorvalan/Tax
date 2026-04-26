@@ -51,6 +51,7 @@ export default function LedgerScreen() {
       <ScrollView style={styles.scroll}>
         <View style={styles.header}>
           <Text style={styles.title}>Transacciones</Text>
+          <Text style={styles.subtitle}>Historial de tus ingresos y gastos</Text>
         </View>
 
         {/* Filter Pills */}
@@ -85,13 +86,18 @@ export default function LedgerScreen() {
         ) : (
           sortedDates.map((date) => (
             <View key={date} style={styles.dateGroup}>
-              <Text style={styles.dateHeader}>
-                {new Date(date + "T00:00:00").toLocaleDateString("es-AR", {
-                  weekday: "short",
-                  month: "short",
-                  day: "numeric",
-                })}
-              </Text>
+              <View style={styles.dateHeaderRow}>
+                <Text style={styles.dateHeader}>
+                  {new Date(date + "T00:00:00").toLocaleDateString("es-AR", {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                  })}
+                </Text>
+                <Text style={styles.dateTotal}>
+                  {formatSignedAmount(getDateNetTotal(groupedByDate.get(date) ?? []))}
+                </Text>
+              </View>
               {(groupedByDate.get(date) ?? []).map((t) => (
                 <TouchableOpacity
                   key={t.id}
@@ -102,7 +108,7 @@ export default function LedgerScreen() {
                   <View style={styles.txnLeft}>
                     <View
                       style={[
-                        styles.txnDot,
+                        styles.txnIconWrap,
                         {
                           backgroundColor:
                             CAT_COLORS[
@@ -110,23 +116,30 @@ export default function LedgerScreen() {
                             ] || COLORS.accent,
                         },
                       ]}
-                    />
+                    >
+                      <Text style={styles.txnIconText}>
+                        {t.categoria.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
                     <View style={styles.txnInfo}>
                       <Text style={styles.txnDesc}>{t.descripcion}</Text>
                       <Text style={styles.txnMeta}>
-                        {t.categoria} • {t.fuente} • {formatTxnHour(t)}
+                        {t.fuente} • {t.categoria}
                       </Text>
                     </View>
                   </View>
-                  <Text
-                    style={[
-                      styles.txnAmount,
-                      t.tipo === "gasto" ? styles.txnGasto : styles.txnIngreso,
-                    ]}
-                  >
-                    {t.tipo === "gasto" ? "−" : "+"} $
-                    {t.monto.toLocaleString("es-AR")}
-                  </Text>
+                  <View style={styles.txnRight}>
+                    <Text
+                      style={[
+                        styles.txnAmount,
+                        t.tipo === "gasto" ? styles.txnGasto : styles.txnIngreso,
+                      ]}
+                    >
+                      {t.tipo === "gasto" ? "−" : "+"} $
+                      {t.monto.toLocaleString("es-AR")}
+                    </Text>
+                    <Text style={styles.txnHour}>{formatTxnHour(t)}</Text>
+                  </View>
                 </TouchableOpacity>
               ))}
             </View>
@@ -148,11 +161,30 @@ function formatTxnHour(txn: { created_at?: string }) {
   });
 }
 
+function getDateNetTotal(
+  txns: Array<{ monto: number; tipo: "gasto" | "ingreso" }>,
+) {
+  return txns.reduce(
+    (sum, txn) => sum + (txn.tipo === "ingreso" ? txn.monto : -txn.monto),
+    0,
+  );
+}
+
+function formatSignedAmount(amount: number) {
+  const sign = amount >= 0 ? "+" : "-";
+  return `${sign}$${Math.abs(amount).toLocaleString("es-AR")}`;
+}
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.bg },
   scroll: { flex: 1 },
   header: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16 },
   title: { fontSize: 28, fontWeight: "700", color: COLORS.text1 },
+  subtitle: {
+    fontSize: 13,
+    color: COLORS.text2,
+    marginTop: 4,
+  },
   filterRow: {
     flexDirection: "row",
     paddingHorizontal: 20,
@@ -176,12 +208,22 @@ const styles = StyleSheet.create({
   emptyState: { paddingVertical: 60, alignItems: "center" },
   emptyText: { fontSize: 16, color: COLORS.text2 },
   dateGroup: { paddingHorizontal: 20, marginBottom: 16 },
+  dateHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
   dateHeader: {
     fontSize: 12,
     fontWeight: "700",
     color: COLORS.text2,
     textTransform: "uppercase",
-    marginBottom: 8,
+  },
+  dateTotal: {
+    fontSize: 12,
+    color: COLORS.text2,
+    fontWeight: "700",
   },
   txnItem: {
     flexDirection: "row",
@@ -196,11 +238,32 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   txnLeft: { flexDirection: "row", alignItems: "center", flex: 1 },
-  txnDot: { width: 10, height: 10, borderRadius: 5, marginRight: 12 },
+  txnIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    marginRight: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  txnIconText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
   txnInfo: { flex: 1 },
   txnDesc: { fontSize: 14, fontWeight: "600", color: COLORS.text1 },
   txnMeta: { fontSize: 11, color: COLORS.text2, marginTop: 2 },
-  txnAmount: { fontSize: 14, fontWeight: "700", marginLeft: 8 },
+  txnRight: {
+    marginLeft: 8,
+    alignItems: "flex-end",
+  },
+  txnAmount: { fontSize: 14, fontWeight: "700" },
+  txnHour: {
+    marginTop: 2,
+    fontSize: 11,
+    color: COLORS.text2,
+  },
   txnGasto: { color: "#ff4757" },
   txnIngreso: { color: "#2ed573" },
 });

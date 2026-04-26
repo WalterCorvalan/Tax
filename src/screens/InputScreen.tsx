@@ -32,7 +32,7 @@ export default function InputScreen() {
   const [parsed, setParsed] = useState<ParsedTransaction | null>(null);
   const [saving, setSaving] = useState(false);
   const cardAnim = useRef(new Animated.Value(0)).current;
-  const { insert } = useTransacciones();
+  const { insert, transacciones } = useTransacciones();
 
   const showCard = () => {
     Animated.spring(cardAnim, {
@@ -100,6 +100,15 @@ export default function InputScreen() {
     ? CAT_COLORS[parsed.categoria as keyof typeof CAT_COLORS] || COLORS.accent
     : COLORS.accent;
   const isGasto = parsed?.tipo === "gasto";
+  const today = new Date().toISOString().slice(0, 10);
+  const todaysTxns = transacciones.filter((t) => t.fecha === today);
+  const todaysIngresos = todaysTxns
+    .filter((t) => t.tipo === "ingreso")
+    .reduce((sum, t) => sum + t.monto, 0);
+  const todaysGastos = todaysTxns
+    .filter((t) => t.tipo === "gasto")
+    .reduce((sum, t) => sum + t.monto, 0);
+  const todaysBalance = todaysIngresos - todaysGastos;
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -130,6 +139,25 @@ export default function InputScreen() {
           <Text style={styles.heroSub}>
             Escribilo como si le hablaras a alguien
           </Text>
+        </View>
+
+        <View style={styles.quickStats}>
+          <View style={styles.quickStatCard}>
+            <Text style={styles.quickStatLabel}>Movimientos hoy</Text>
+            <Text style={styles.quickStatValue}>{todaysTxns.length}</Text>
+          </View>
+          <View style={styles.quickStatCard}>
+            <Text style={styles.quickStatLabel}>Balance del día</Text>
+            <Text
+              style={[
+                styles.quickStatValue,
+                todaysBalance >= 0 ? styles.positive : styles.negative,
+              ]}
+            >
+              {todaysBalance >= 0 ? "+" : "-"} $
+              {Math.abs(todaysBalance).toLocaleString("es-AR")}
+            </Text>
+          </View>
         </View>
 
         {/* Input */}
@@ -284,7 +312,7 @@ const styles = StyleSheet.create({
   },
   hero: {
     paddingHorizontal: 20,
-    marginBottom: 30,
+    marginBottom: 18,
   },
   heroTitle: {
     fontSize: 32,
@@ -296,6 +324,37 @@ const styles = StyleSheet.create({
   heroSub: {
     fontSize: 14,
     color: COLORS.text2,
+  },
+  quickStats: {
+    flexDirection: "row",
+    paddingHorizontal: 20,
+    gap: 10,
+    marginBottom: 16,
+  },
+  quickStatCard: {
+    flex: 1,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  quickStatLabel: {
+    fontSize: 11,
+    color: COLORS.text2,
+    marginBottom: 4,
+  },
+  quickStatValue: {
+    fontSize: 16,
+    color: COLORS.text1,
+    fontWeight: "700",
+  },
+  positive: {
+    color: "#2ed573",
+  },
+  negative: {
+    color: "#ff4757",
   },
   inputWrap: {
     marginHorizontal: 20,

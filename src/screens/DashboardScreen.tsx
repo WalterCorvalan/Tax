@@ -177,6 +177,11 @@ const styles = StyleSheet.create({
   chartContainer: { alignItems: "center", justifyContent: "center" },
   chartCenter: {
     alignItems: "center",
+    justifyContent: "center",
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    backgroundColor: COLORS.card,
   },
   chartCenterLabel: {
     fontSize: 11,
